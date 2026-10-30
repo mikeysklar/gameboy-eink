@@ -1,0 +1,11 @@
+*.mp4
+*.mov
+*.gb
+*.gbc
+*.sav
+__pycache__/
+src/build/
+.mpy_ld_cache-*/
+src/host_test
+src/host_lib.so
+.DS_Store

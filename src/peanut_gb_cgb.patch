@@ -1,0 +1,186 @@
+--- a/peanut_gb.h (tvecera/Peanut-GB gbc-rtc-fix a7919bb)
++++ b/peanut_gb_cgb.h
+@@ -42,6 +42,10 @@
+ #endif
+ 
+ #include <stdlib.h>	/* Required for qsort and abort */
++
++/* fixPalette is r<<10 | g<<5 | b; RGB565 widens green to 6 bits. */
++#define PGB_RGB555_TO_RGB565(c) ((uint16_t)((((c) & 0x7C00) << 1) | \
++	(((c) & 0x03E0) << 1) | (((c) >> 4) & 0x20) | ((c) & 0x001F)))
+ #include <stdint.h>	/* Required for int types */
+ #include <string.h>	/* Required for memset */
+ #include <time.h>	/* Required for tm struct */
+@@ -203,6 +207,7 @@
+ #define LCD_MODE_3_CYCLES   284
+ /* There are 154 scanlines. LY < 154. */
+ #define LCD_VERT_LINES      154
++#define LCD_FRAME_CYCLES    (LCD_LINE_CYCLES * LCD_VERT_LINES)
+ #define LCD_WIDTH           160
+ #define LCD_HEIGHT          144
+ 
+@@ -452,6 +457,7 @@
+ 	uint_fast16_t div_count;	/* Divider Register Counter */
+ 	uint_fast16_t tima_count;	/* Timer Counter */
+ 	uint_fast16_t serial_count;	/* Serial Counter */
++	uint_fast32_t lcd_off_count;	/* Cycles LCD has been disabled */
+ };
+ 
+ #if ENABLE_LCD
+@@ -656,6 +662,7 @@
+ 		uint8_t vramBank;
+ 		uint16_t vramBankOffset;
+ 		uint16_t fixPalette[0x40];  //BG then OAM palettes fixed for the screen
++		uint16_t fixPalette565[0x40];  /* Same colours as RGB565. */
+ 		uint8_t OAMPalette[0x40];
+ 		uint8_t BGPalette[0x40];
+ 		uint8_t OAMPaletteID;
+@@ -906,6 +913,7 @@
+ 	/* Return address that caused read error. */
+ 	(gb->gb_error)(gb, GB_INVALID_READ, addr);
+ 	PGB_UNREACHABLE();
++	return 0xFF;
+ }
+ 
+ /**
+@@ -1165,6 +1173,9 @@
+ 					IO_STAT_MODE_HBLANK;
+ 				/* LY fixed to 0 when LCD turned off. */
+ 				gb->hram_io[IO_LY] = 0;
++				/* Keep track of lcd_count to correctly track
++				 * passing time (ported from upstream). */
++				gb->counter.lcd_off_count += gb->counter.lcd_count;
+ 				/* Reset LCD timer. */
+ 				gb->counter.lcd_count = 0;
+ 			}
+@@ -1310,6 +1321,7 @@
+ 			gb->cgb.BGPalette[(gb->cgb.BGPaletteID & 0x3F)] = val;
+ 			fixPaletteTemp = (gb->cgb.BGPalette[(gb->cgb.BGPaletteID & 0x3E) + 1] << 8) + (gb->cgb.BGPalette[(gb->cgb.BGPaletteID & 0x3E)]);
+ 			gb->cgb.fixPalette[((gb->cgb.BGPaletteID & 0x3E) >> 1)] = ((fixPaletteTemp & 0x7C00) >> 10) | (fixPaletteTemp & 0x03E0) | ((fixPaletteTemp & 0x001F) << 10);  // swap Red and Blue
++			gb->cgb.fixPalette565[((gb->cgb.BGPaletteID & 0x3E) >> 1)] = PGB_RGB555_TO_RGB565(gb->cgb.fixPalette[((gb->cgb.BGPaletteID & 0x3E) >> 1)]);
+ 			if(gb->cgb.BGPaletteInc) gb->cgb.BGPaletteID = (++gb->cgb.BGPaletteID) & 0x3F;
+ 			return;
+ 
+@@ -1324,6 +1336,7 @@
+ 			gb->cgb.OAMPalette[(gb->cgb.OAMPaletteID & 0x3F)] = val;
+ 			fixPaletteTemp = (gb->cgb.OAMPalette[(gb->cgb.OAMPaletteID & 0x3E) + 1] << 8) + (gb->cgb.OAMPalette[(gb->cgb.OAMPaletteID & 0x3E)]);
+ 			gb->cgb.fixPalette[0x20 + ((gb->cgb.OAMPaletteID & 0x3E) >> 1)] = ((fixPaletteTemp & 0x7C00) >> 10) | (fixPaletteTemp & 0x03E0) | ((fixPaletteTemp & 0x001F) << 10);  // swap Red and Blue
++			gb->cgb.fixPalette565[0x20 + ((gb->cgb.OAMPaletteID & 0x3E) >> 1)] = PGB_RGB555_TO_RGB565(gb->cgb.fixPalette[0x20 + ((gb->cgb.OAMPaletteID & 0x3E) >> 1)]);
+ 			if(gb->cgb.OAMPaletteInc) gb->cgb.OAMPaletteID = (++gb->cgb.OAMPaletteID) & 0x3F;
+ 			return;
+ 
+@@ -2092,6 +2105,16 @@
+ 		/* *INDENT-ON* */
+ 	};
+ 	static const uint_fast16_t TAC_CYCLES[4] = {1024, 16, 64, 256};
++
++	/* Still halted from a previous call that returned at the end of a
++	 * frame: keep halting instead of waking up (the fork's HALT loop
++	 * never returned when only non-LCD interrupts were enabled). */
++	if(gb->gb_halt &&
++		!(gb->hram_io[IO_IF] & gb->hram_io[IO_IE] & ANY_INTR))
++	{
++		inst_cycles = 4;
++		goto halted;
++	}
+ 
+ 	/* Handle interrupts */
+ 	/* If gb_halt is positive, then an interrupt must have occured by the
+@@ -3613,6 +3636,7 @@
+ 		PGB_UNREACHABLE();
+ 	}
+ 
++halted:
+ 	do
+ 	{
+ 		/* DIV register timing */
+@@ -3702,9 +3726,32 @@
+ 		}
+ 
+ 		/* If LCD is off, don't update LCD state or increase the LCD
+-		 * ticks. */
++		 * ticks. Instead, end the frame once a frame's worth of time
++		 * has passed, so gb_run_frame() returns (ported from upstream;
++		 * the fork looped forever here). */
+ 		if(!(gb->hram_io[IO_LCDC] & LCDC_ENABLE))
++		{
++#if PEANUT_FULL_GBC_SUPPORT
++			gb->counter.lcd_off_count += inst_cycles >> gb->cgb.doubleSpeed;
++#else
++			gb->counter.lcd_off_count += inst_cycles;
++#endif
++			if(gb->counter.lcd_off_count >= LCD_FRAME_CYCLES)
++			{
++				gb->counter.lcd_off_count -= LCD_FRAME_CYCLES;
++				gb->gb_frame = 1;
++				/* Leave HALT fast-forward so gb_run_frame() sees it. */
++				break;
++			}
++			/* While halted, step at most a line, and not past the
++			 * frame end. */
++			inst_cycles = (LCD_FRAME_CYCLES - gb->counter.lcd_off_count) > LCD_LINE_CYCLES ?
++				LCD_LINE_CYCLES : (LCD_FRAME_CYCLES - gb->counter.lcd_off_count);
++#if PEANUT_FULL_GBC_SUPPORT
++			inst_cycles <<= gb->cgb.doubleSpeed;
++#endif
+ 			continue;
++		}
+ 
+ 		/* LCD Timing */
+ #if PEANUT_FULL_GBC_SUPPORT
+@@ -3829,7 +3876,36 @@
+ 			if (gb->counter.lcd_count < LCD_MODE_0_CYCLES)
+ 				inst_cycles = LCD_MODE_0_CYCLES - gb->counter.lcd_count;
+ 		}
+-	} while(gb->gb_halt && (gb->hram_io[IO_IF] & gb->hram_io[IO_IE]) == 0);
++
++		/* While halted, step to the next LCD event. The fork only did
++		 * this on some mode changes and kept reusing the last step
++		 * elsewhere, which overshot line boundaries in VBlank and
++		 * skipped drawing line 0 (cgb-acid2 top row). */
++		if(gb->gb_halt)
++		{
++			uint_fast16_t next;
++
++			switch(gb->hram_io[IO_STAT] & STAT_MODE)
++			{
++			case IO_STAT_MODE_HBLANK:
++				next = LCD_MODE_2_CYCLES;
++				break;
++			case IO_STAT_MODE_SEARCH_OAM:
++				next = LCD_MODE_3_CYCLES;
++				break;
++			default:
++				next = LCD_LINE_CYCLES;
++				break;
++			}
++
++			inst_cycles = gb->counter.lcd_count < next ?
++				next - gb->counter.lcd_count : 4;
++#if PEANUT_FULL_GBC_SUPPORT
++			inst_cycles <<= gb->cgb.doubleSpeed;
++#endif
++		}
++	} while(gb->gb_halt && !gb->gb_frame &&
++		(gb->hram_io[IO_IF] & gb->hram_io[IO_IE]) == 0);
+ 	/* If halted, loop until an interrupt occurs. */
+ }
+ 
+@@ -3950,6 +4026,7 @@
+ 	gb->counter.div_count = 0;
+ 	gb->counter.tima_count = 0;
+ 	gb->counter.serial_count = 0;
++	gb->counter.lcd_off_count = 0;
+ 
+ 	gb->direct.joypad = 0xFF;
+ 	gb->hram_io[IO_JOYP] = 0xCF;
+@@ -3989,6 +4066,9 @@
+ 	{
+ 		gb->cgb.OAMPalette[(i << 1)] = gb->cgb.BGPalette[(i << 1)] = 0x7F;
+ 		gb->cgb.OAMPalette[(i << 1) + 1] = gb->cgb.BGPalette[(i << 1) + 1] = 0xFF;
++		/* Match the palette RAM above (white); the fork left these 0. */
++		gb->cgb.fixPalette[i] = gb->cgb.fixPalette[0x20 + i] = 0x7FFF;
++		gb->cgb.fixPalette565[i] = gb->cgb.fixPalette565[0x20 + i] = 0xFFFF;
+ 	}
+ 	gb->cgb.OAMPaletteID = 0;
+ 	gb->cgb.BGPaletteID = 0;

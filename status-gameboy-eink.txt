@@ -1,0 +1,15 @@
+[1;96mGAME BOY ON E-INK[0m  [2;37m(updated 13:01)[0m
+[2;37mRP2040 ThinkInk + 4.2in SSD1683, CP 11.0.0-a2 @ 200 MHz[0m
+
+  [1;92m[x][0m [1mgbeink.mpy: Peanut-GB C, DMG, 2x[0m
+  [1;92m[x][0m [1mTetris 51-60 fps on panel[0m [2;37m51.5 avg[0m
+  [1;92m[x][0m [1mMini Gamepad 0x49, 8 inputs, exit[0m
+  [1;92m[x][0m [1mwipe 30 s, OTP clean 120 s[0m
+  [1;92m[x][0m [1mclip: tetris-eink-play30-hevc.mp4[0m [2;37m5.6 MB[0m
+  [1;92m[x][0m [1mBasecamp: posted to Limor + PT[0m
+  [1;92m[x][0m [1mreflashed epd-combined (alpha.2-34)[0m
+  [1;97m[ ][0m [1mcode.py is still the PR sign[0m
+[1;94mFINDINGS[0m
+  [1;97m- heap 137 KB fresh: buffers before imports[0m
+
+[1;91mRULES[0m [2;37mno adafruit/ pushes[0m
