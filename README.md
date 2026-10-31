@@ -6,9 +6,9 @@ Game Boy on a 4.2" e-ink display, using CircuitPython and the Peanut-GB emulator
 
 ## Parts
 
-- Adafruit Feather RP2040 ThinkInk
-- Adafruit 4.2" SSD1683 e-ink display (#6381)
-- Adafruit Mini I2C Gamepad with seesaw (#5743)
+- [Adafruit RP2040 Feather ThinkInk](https://www.adafruit.com/product/5727)
+- [4.2" 400x300 SSD1683 eInk display](https://www.adafruit.com/product/6381)
+- [Adafruit Mini I2C Gamepad with seesaw](https://www.adafruit.com/product/5743)
 
 ## Setup
 
