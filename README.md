@@ -2,7 +2,7 @@
 
 Game Boy on a 4.2" e-ink display, using CircuitPython and the Peanut-GB emulator.
 
-![Tetris running on the e-ink display](docs/tetris-eink.gif)
+![Tetris being played on the e-ink display](docs/tetris-gameplay.gif)
 
 ## Parts
 
@@ -28,6 +28,25 @@ Game Boy on a 4.2" e-ink display, using CircuitPython and the Peanut-GB emulator
 | Select | Select |
 
 Hold Select + Start for 1 second to exit.
+
+## Build from source
+
+Only needed if you change the code. Needs `arm-none-eabi-gcc`, `mpy-cross` and a CircuitPython checkout.
+
+```sh
+pip install pyelftools ar
+cd src
+make MPY_DIR=../../circuitpython ARCH=armv6m   # builds gbeink.mpy
+cd ..
+mpy-cross board/gbdemo.py                      # builds board/gbdemo.mpy
+```
+
+Test the emulator on your computer, no board needed:
+
+```sh
+cd src
+make host_test && ./host_test Tetris.gb
+```
 
 ## License
 
