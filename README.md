@@ -8,13 +8,13 @@ Game Boy on a 4.2" e-ink display, using CircuitPython and the Peanut-GB emulator
 
 - Adafruit Feather RP2040 ThinkInk
 - Adafruit 4.2" SSD1683 e-ink display (#6381)
-- Adafruit Mini I2C STEMMA QT Gamepad (#5743)
+- Adafruit Mini I2C Gamepad with seesaw (#5743)
 
 ## Setup
 
-1. Download the UF2 and zip from [Releases](https://github.com/mikeysklar/gameboy-eink/releases).
-2. Hold BOOTSEL and press RESET, then copy the UF2 to the `RPI-RP2` drive.
-3. Unzip the zip and copy its files to the `CIRCUITPY` drive.
+1. Download the zip from [Releases](https://github.com/mikeysklar/gameboy-eink/releases) and unzip it.
+2. Hold BOOTSEL and press RESET, then copy the UF2 from the zip to the `RPI-RP2` drive.
+3. Copy the files from the zip's `CIRCUITPY` folder to the `CIRCUITPY` drive.
 4. Copy your own 32 KB Game Boy ROM to `CIRCUITPY` as `Tetris.gb`. No ROM is included.
 
 ## Controls
